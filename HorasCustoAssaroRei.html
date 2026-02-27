@@ -200,7 +200,7 @@ function parseXL(data){
 }
 
 /* ===== STATE ===== */
-var S={view:"dashboard",projects:[],sel:null,modal:null,np:{name:"",code:"",sold:0},sr:"",ir:null,resFilter:"",editRes:null,projTab:"resumo",dirty:false,cmpOpen:true,rlFilter:""};
+var S={view:"dashboard",projects:[],sel:null,modal:null,np:{name:"",code:"",sold:0},sr:"",ir:null,resFilter:"",editRes:null,projTab:"resumo",dirty:false,cmpOpen:true,rlFilter:"",rlMonth:"all"};
 function markDirty(){S.dirty=true;save();showSaveBar();}
 function showSaveBar(){var existing=document.getElementById("save-bar");if(existing)return;var bar=h("div",{className:"save-bar",id:"save-bar"},h("span",{className:"save-hint"},"✏️ Alterações pendentes"),h("button",{className:"btn-primary",onClick:function(){S.dirty=false;var el=document.getElementById("save-bar");if(el)el.remove();render();}},"✓  Atualizar Dashboard"));document.body.appendChild(bar);}
 function hideSaveBar(){S.dirty=false;var el=document.getElementById("save-bar");if(el)el.remove();}
@@ -743,40 +743,62 @@ function mkResLoad(){
     el.appendChild(h("div",{className:"empty-state",style:{padding:"70px"}},h("div",{className:"empty-icon"},"📋"),h("p",null,"Nenhum projeto cadastrado")));
     return el;
   }
-  // Collect all resources that appear in any project
+  // Collect all unique months across all projects
+  var allMonths={};
+  S.projects.forEach(function(p){
+    var months=getProjectMonths(p);
+    months.forEach(function(m){allMonths[m.key]=m.lbl;});
+  });
+  var monthKeys=Object.keys(allMonths).sort();
+  var selMes=S.rlMonth||"all";
+  // Filters bar
+  var filters=h("div",{style:{display:"flex",gap:"12px",alignItems:"center",flexWrap:"wrap",marginBottom:"16px"}});
+  filters.appendChild(h("div",{className:"search-box",style:{maxWidth:"280px",margin:"0"}},h("span",{className:"search-icon"},"🔍"),h("input",{placeholder:"Filtrar recurso...",value:S.rlFilter||"",onInput:function(e){S.rlFilter=e.target.value;render();}})));
+  // Month selector
+  var mesWrap=h("div",{style:{display:"flex",alignItems:"center",gap:"6px"}});
+  mesWrap.appendChild(h("span",{style:{fontSize:"12px",color:"var(--text-m)"}},"📅 Mês:"));
+  var mesChips=h("div",{style:{display:"flex",gap:"4px",flexWrap:"wrap"}});
+  var allBtn=h("button",{className:"bkp-btn",style:selMes==="all"?{background:"var(--accent)",color:"#fff",borderColor:"var(--accent)"}:{},onClick:function(){S.rlMonth="all";render();}},"Todos");
+  mesChips.appendChild(allBtn);
+  monthKeys.forEach(function(mk){
+    var active=selMes===mk;
+    mesChips.appendChild(h("button",{className:"bkp-btn",style:active?{background:"var(--accent)",color:"#fff",borderColor:"var(--accent)"}:{},onClick:function(){S.rlMonth=mk;render();}},allMonths[mk]));
+  });
+  mesWrap.appendChild(mesChips);
+  filters.appendChild(mesWrap);
+  el.appendChild(filters);
+  // Collect data per resource
   var resMap={};
   S.projects.forEach(function(p){
+    ensureForecast(p);
     p.resources.forEach(function(r){
       if(!resMap[r.name])resMap[r.name]={name:r.name,role:r.role,rate:r.rate,projects:{}};
-      var hp=calcPlannedHours(p,r.name);
+      var hp;
+      if(selMes==="all"){hp=calcPlannedHours(p,r.name);}
+      else{hp=getFcLaborVal(p,r.name,selMes);}
       var hc=r.hc||0;
       resMap[r.name].projects[p.id]={hp:hp,hc:hc};
     });
   });
   var resList=Object.keys(resMap).map(function(k){return resMap[k];});
   resList.sort(function(a,b){return a.name.localeCompare(b.name);});
-  // Filter
-  el.appendChild(h("div",{className:"search-box",style:{maxWidth:"320px",marginBottom:"16px"}},h("span",{className:"search-icon"},"🔍"),h("input",{placeholder:"Filtrar recurso...",value:S.rlFilter||"",onInput:function(e){S.rlFilter=e.target.value;render();}})));
   var filtered=resList.filter(function(r){return(r.name+r.role).toLowerCase().indexOf((S.rlFilter||"").toLowerCase())>=0;});
   if(!filtered.length){
-    el.appendChild(h("div",{className:"empty-state",style:{padding:"40px"}},h("p",null,"Nenhum recurso encontrado com horas planejadas")));
+    el.appendChild(h("div",{className:"empty-state",style:{padding:"40px"}},h("p",null,"Nenhum recurso encontrado")));
     return el;
   }
   // Build pivot table
   var projs=S.projects;
   var wrap=h("div",{className:"fc-wrap"});
   var tbl=h("table",{className:"fc-table"});
-  // Header
   var thead=h("thead",null);
   var tr=h("tr",null,h("th",{style:{minWidth:"180px"}},"Recurso"));
   projs.forEach(function(p){
     tr.appendChild(h("th",{style:{cursor:"pointer",minWidth:"90px"},title:p.name,onClick:function(){S.view="projects";S.sel=p.id;render();}},p.code||p.name.slice(0,15)));
   });
   tr.appendChild(h("th",null,"Total Plan."));
-  tr.appendChild(h("th",null,"Total Cons."));
-  tr.appendChild(h("th",null,"Saldo"));
+  if(selMes==="all"){tr.appendChild(h("th",null,"Total Cons."));tr.appendChild(h("th",null,"Saldo"));}
   thead.appendChild(tr);tbl.appendChild(thead);
-  // Body
   var tbody=h("tbody",null);
   var projTotPlan={},projTotCons={},grandPlan=0,grandCons=0;
   projs.forEach(function(p){projTotPlan[p.id]=0;projTotCons[p.id]=0;});
@@ -796,18 +818,21 @@ function mkResLoad(){
       if(hp>0)cellStyle.color="var(--accent)";
       if(hc>0&&hp===0)cellStyle.color="var(--text-m)";
       var cellText=hp?String(hp):"";
-      if(hc>0&&hp>0)cellText=hp+" ("+hc.toFixed(0)+")";
-      else if(hc>0&&!hp)cellText="("+hc.toFixed(0)+")";
+      if(selMes==="all"){
+        if(hc>0&&hp>0)cellText=hp+" ("+hc.toFixed(0)+")";
+        else if(hc>0&&!hp)cellText="("+hc.toFixed(0)+")";
+      }
       row.appendChild(h("td",{style:cellStyle},cellText||""));
     });
     grandPlan+=totalPlan;grandCons+=totalCons;
-    var saldo=totalPlan-totalCons;
     row.appendChild(h("td",{className:"fc-sum",style:{color:"var(--accent)"}},totalPlan?fmtH(totalPlan):"—"));
-    row.appendChild(h("td",{className:"fc-sum",style:{color:"var(--cyan)"}},totalCons?fmtH(totalCons):"—"));
-    row.appendChild(h("td",{className:"fc-sum",style:{color:saldo<0?"var(--danger)":"var(--success)"}},totalPlan||totalCons?(saldo>0?"+":"")+saldo.toFixed(1)+"h":"—"));
+    if(selMes==="all"){
+      var saldo=totalPlan-totalCons;
+      row.appendChild(h("td",{className:"fc-sum",style:{color:"var(--cyan)"}},totalCons?fmtH(totalCons):"—"));
+      row.appendChild(h("td",{className:"fc-sum",style:{color:saldo<0?"var(--danger)":"var(--success)"}},totalPlan||totalCons?(saldo>0?"+":"")+saldo.toFixed(1)+"h":"—"));
+    }
     tbody.appendChild(row);
   });
-  // Total row
   var trow=h("tr",{className:"fc-total"});
   trow.appendChild(h("td",null,"TOTAL ("+filtered.length+" recursos)"));
   projs.forEach(function(p){
@@ -816,14 +841,15 @@ function mkResLoad(){
   });
   var gSaldo=grandPlan-grandCons;
   trow.appendChild(h("td",{className:"fc-sum",style:{color:"var(--accent)"}},fmtH(grandPlan)));
-  trow.appendChild(h("td",{className:"fc-sum",style:{color:"var(--cyan)"}},fmtH(grandCons)));
-  trow.appendChild(h("td",{className:"fc-sum",style:{color:gSaldo<0?"var(--danger)":"var(--success)"}},gSaldo.toFixed(1)+"h"));
+  if(selMes==="all"){
+    trow.appendChild(h("td",{className:"fc-sum",style:{color:"var(--cyan)"}},fmtH(grandCons)));
+    trow.appendChild(h("td",{className:"fc-sum",style:{color:gSaldo<0?"var(--danger)":"var(--success)"}},gSaldo.toFixed(1)+"h"));
+  }
   tbody.appendChild(trow);
   tbl.appendChild(tbody);wrap.appendChild(tbl);el.appendChild(wrap);
-  // Legend
   el.appendChild(h("div",{style:{display:"flex",gap:"20px",fontSize:"11px",color:"var(--text-m)",marginTop:"10px",flexWrap:"wrap"}},
-    h("span",null,"📋 Valores = Horas planejadas (Resource Load)"),
-    h("span",null,"(N) = Horas consumidas entre parênteses"),
+    h("span",null,selMes==="all"?"📋 Valores = Total planejado (todos os meses)":"📋 Valores = Horas planejadas em "+allMonths[selMes]),
+    selMes==="all"?h("span",null,"(N) = Horas consumidas entre parênteses"):null,
     h("span",null,"💡 Clique no nome do projeto para abrir")
   ));
   return el;
