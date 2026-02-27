@@ -413,7 +413,7 @@ function mkMain(){var m=h("main",null);if(S.view==="dashboard")m.appendChild(mkD
   }
 }else m.appendChild(mkRes());return m;}
 
-function mkDash(){var el=h("div",{className:"fade"});el.appendChild(h("h1",{style:{fontSize:"24px",fontWeight:"700",marginBottom:"4px"}},"Dashboard Geral"));el.appendChild(h("p",{style:{color:"var(--text-d)",fontSize:"14px",marginBottom:"24px"}},S.projects.length+" projetos · Visão consolidada"));if(!S.projects.length){el.appendChild(h("div",{className:"empty-state",style:{padding:"70px"}},h("div",{className:"empty-icon"},"📊"),h("h2",{style:{fontSize:"18px",fontWeight:"600",marginBottom:"8px",color:"var(--text)"}},"Nenhum projeto cadastrado"),h("p",{style:{marginBottom:"20px"}},"Crie seu primeiro projeto"),h("button",{className:"btn-primary",onClick:function(){S.modal="new";render();}},"+  Criar Projeto")));return el;}var tph=0,tch=0,tpc=0,tcc=0,ts=0;S.projects.forEach(function(p){var s=stats(p);tph+=s.ph;tch+=s.ch;tpc+=s.pc;tcc+=s.cc;ts+=s.sold;});var saldo=ts-tcc,saldoPlan=ts-tpc,estGeral=saldoPlan<saldo&&saldoPlan<0,g=h("div",{className:"kpi-grid"});g.appendChild(mkKPI("Projetos",String(S.projects.length),S.projects.filter(function(p){return stats(p).health==="bad";}).length+" com alerta","var(--accent)"));g.appendChild(mkKPI("Horas Consumidas",fmtH(tch),"de "+fmtH(tph)+" planejadas","var(--cyan)"));g.appendChild(mkKPI("Custo Planejado",fmtK(tpc),estGeral?"🚨 Acima do vendido ("+pct(tpc,ts)+"%)":ts?pct(tpc,ts)+"% do vendido":"—",estGeral?"var(--danger)":"var(--warning)"));g.appendChild(mkKPI("Custo Consumido",fmtK(tcc),"Vendido: "+fmtK(ts),"var(--purple)"));g.appendChild(mkKPI("Saldo Plan. − Consumido",fmtK(saldoPlan),estGeral?"🚨 Forecast vai estourar!":saldoPlan>=0?"✓ Margem projetada":"⚠ Forecast acima",saldoPlan>=0?"var(--success)":"var(--danger)"));g.appendChild(mkKPI("Saldo Atual",fmtK(saldo),saldo>=0?"✓ Dentro do orçamento":"⚠ Acima do orçamento",saldo>=0?"var(--success)":"var(--danger)"));el.appendChild(g);
+function mkDash(){var el=h("div",{className:"fade"});el.appendChild(h("h1",{style:{fontSize:"24px",fontWeight:"700",marginBottom:"4px"}},"Dashboard Geral"));el.appendChild(h("p",{style:{color:"var(--text-d)",fontSize:"14px",marginBottom:"24px"}},S.projects.length+" projetos · Visão consolidada"));if(!S.projects.length){el.appendChild(h("div",{className:"empty-state",style:{padding:"70px"}},h("div",{className:"empty-icon"},"📊"),h("h2",{style:{fontSize:"18px",fontWeight:"600",marginBottom:"8px",color:"var(--text)"}},"Nenhum projeto cadastrado"),h("p",{style:{marginBottom:"20px"}},"Crie seu primeiro projeto"),h("button",{className:"btn-primary",onClick:function(){S.modal="new";render();}},"+  Criar Projeto")));return el;}var tph=0,tch=0,tpc=0,tcc=0,ts=0;S.projects.forEach(function(p){var s=stats(p);tph+=s.ph;tch+=s.ch;tpc+=s.pc;tcc+=s.cc;ts+=s.sold;});var saldo=ts-tcc,saldoPlan=ts-tpc-tcc,estGeral=saldoPlan<saldo&&saldoPlan<0,g=h("div",{className:"kpi-grid"});g.appendChild(mkKPI("Projetos",String(S.projects.length),S.projects.filter(function(p){return stats(p).health==="bad";}).length+" com alerta","var(--accent)"));g.appendChild(mkKPI("Horas Consumidas",fmtH(tch),"de "+fmtH(tph)+" planejadas","var(--cyan)"));g.appendChild(mkKPI("Custo Planejado",fmtK(tpc),estGeral?"🚨 Acima do vendido ("+pct(tpc,ts)+"%)":ts?pct(tpc,ts)+"% do vendido":"—",estGeral?"var(--danger)":"var(--warning)"));g.appendChild(mkKPI("Custo Consumido",fmtK(tcc),"Vendido: "+fmtK(ts),"var(--purple)"));g.appendChild(mkKPI("Saldo Plan. − Consumido",fmtK(saldoPlan),estGeral?"🚨 Forecast vai estourar!":saldoPlan>=0?"✓ Margem projetada":"⚠ Forecast acima",saldoPlan>=0?"var(--success)":"var(--danger)"));g.appendChild(mkKPI("Saldo Atual",fmtK(saldo),saldo>=0?"✓ Dentro do orçamento":"⚠ Acima do orçamento",saldo>=0?"var(--success)":"var(--danger)"));el.appendChild(g);
 var cd=h("div",{className:"card"});cd.appendChild(h("h3",null,"Status dos Projetos"));var sg=h("div",{className:"status-grid"});S.projects.forEach(function(p,idx){var s=stats(p),c=s.health==="good"?"var(--success)":s.health==="warn"?"var(--warning)":"var(--danger)";
   var arrows=h("div",{style:{display:"flex",flexDirection:"column",gap:"2px",marginRight:"6px"}});
   arrows.appendChild(h("button",{className:"reorder-btn",disabled:idx===0,title:"Mover para cima",onClick:function(e){e.stopPropagation();moveProject(idx,-1);}},"▲"));
@@ -433,7 +433,7 @@ function mkProj(){
     EXPENSE_CATS.forEach(function(c){fcExpTotal+=getFcExpVal(p,c,m.key);});
   });
   var fcTotal=fcLaborTotal+fcExpTotal;
-  var saldoPlan=(p.sold||0)-s.pc;
+  var saldoPlan=(p.sold||0)-s.pc-s.cc;
   // Header with editable name
   el.appendChild(h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"22px",flexWrap:"wrap",gap:"12px"}},
     h("div",null,
@@ -478,7 +478,7 @@ function mkProj(){
   colFc.appendChild(mkCmpRow("Custo Labor (Forecast)",fmtK(fcLaborTotal)));
   colFc.appendChild(mkCmpRow("Custo Expenses (Forecast)",fmtK(fcExpTotal)));
   colFc.appendChild(mkCmpRow("Total Forecast (Labor+Exp)",fmtK(fcTotal)));
-  colFc.appendChild(mkCmpRow("Saldo Projetado (Vendido − Plan.)",fmtK(saldoPlan),saldoPlan>=0?"pos":"neg"));
+  colFc.appendChild(mkCmpRow("Saldo (Vendido − Plan. − Cons.)",fmtK(saldoPlan),saldoPlan>=0?"pos":"neg"));
   cmp.appendChild(colFc);
   cmpWrap.appendChild(cmp);
   }
